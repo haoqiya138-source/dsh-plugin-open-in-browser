@@ -115,7 +115,7 @@ function mount(options) {
   return {
     ...built,
     bySlot,
-    documentInjected: bySlot['sidebar.right.tab.document.actions'].options.inject(),
+    documentInjected: bySlot['sidebar.right.tab.document.unpreviewable'].options.inject(),
     menuInjected: bySlot['sidebar.right.tab.menu.item'].options.inject(),
   }
 }
@@ -140,13 +140,12 @@ test('factory returns the inject list and apply entry', () => {
   }
 })
 
-test('apply mounts the two document seats plus the tab-menu seat', () => {
+test('apply mounts the empty-state seat plus the tab-menu seat', () => {
   const { registrations } = mount()
 
   assert.deepEqual(
     registrations.map((entry) => entry.slot),
     [
-      'sidebar.right.tab.document.actions',
       'sidebar.right.tab.document.unpreviewable',
       'sidebar.right.tab.menu.item',
     ],
@@ -157,6 +156,12 @@ test('apply mounts the two document seats plus the tab-menu seat', () => {
     assert.equal(typeof entry.options.inject, 'function')
     assert.equal(typeof entry.component, 'function')
   }
+})
+
+test('no header control is registered for a previewable document tab', () => {
+  const { bySlot } = mount()
+
+  assert.equal(bySlot['sidebar.right.tab.document.actions'], undefined)
 })
 
 test('inject closures expose the caller each seat needs', () => {
@@ -309,10 +314,10 @@ function textOf(node) {
   return ''
 }
 
-test('header control renders bundled text when the locale service has no entry', () => {
+test('empty control renders bundled text when the locale service has no entry', () => {
   const { bySlot, documentInjected } = mount()
 
-  const tree = bySlot['sidebar.right.tab.document.actions'].component({
+  const tree = bySlot['sidebar.right.tab.document.unpreviewable'].component({
     absolutePath: INSIDE,
     ...documentInjected,
     // A locale service with no strings for this namespace returns the key itself.
@@ -320,33 +325,20 @@ test('header control renders bundled text when the locale service has no entry',
   })
 
   const rendered = textOf(tree)
+  assert.match(rendered, /cannot be previewed/)
   assert.match(rendered, /Open in browser/)
   assert.doesNotMatch(rendered, /action\.label/)
 })
 
-test('header control renders nothing without a Host path', () => {
+test('empty control renders nothing without a Host path', () => {
   const { bySlot, documentInjected } = mount()
 
-  const tree = bySlot['sidebar.right.tab.document.actions'].component({
+  const tree = bySlot['sidebar.right.tab.document.unpreviewable'].component({
     ...documentInjected,
     t: (key) => key,
   })
 
   assert.equal(tree, null)
-})
-
-test('empty control offers the browser action for an unpreviewable file', () => {
-  const { bySlot, documentInjected } = mount()
-
-  const tree = bySlot['sidebar.right.tab.document.unpreviewable'].component({
-    absolutePath: INSIDE,
-    ...documentInjected,
-    t: (key) => key,
-  })
-
-  const rendered = textOf(tree)
-  assert.match(rendered, /cannot be previewed/)
-  assert.match(rendered, /Open in browser/)
 })
 
 test('tab menu renders nothing when the tab does not point at a local file', () => {

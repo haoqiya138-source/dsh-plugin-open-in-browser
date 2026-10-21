@@ -1,22 +1,24 @@
 # dsh-plugin-open-in-browser
 
-A community DSH plugin that adds an **Open in browser** control to the Sidebar
-document preview, so a file picked in the Files tree opens in the **system default
-browser** instead of the in-app preview.
+A community DSH plugin that opens a Sidebar file in the **system default browser**
+instead of the in-app preview.
 
-Three entry points ship in one plugin:
+Two entry points ship in one plugin:
 
 | Seat | Where it shows | What it needs from the Host |
 | --- | --- | --- |
-| `sidebar.right.tab.document.actions` | Header toolbar of a previewable document tab | the previewed file's Host path (`absolutePath`) |
-| `sidebar.right.tab.document.unpreviewable` | "Cannot preview this file" empty state | the same Host path |
+| `sidebar.right.tab.document.unpreviewable` | "Cannot preview this file" empty state | the file's Host path (`absolutePath`) |
 | `sidebar.right.tab.menu.item` | Right-click menu of a Sidebar **tab chip** | only the tab's `contentId` (`dsh-resource://file/session/…`) |
 
-The third seat is what makes the plugin useful for a tab whose preview fails: the
-built-in preview only renders the two document seats once its Host metadata read
-succeeds, so a tab showing an error (for example `HTTP 405` from a third-party
-previewer) has no `absolutePath` and no header button. The tab menu still has the
-tab's resource address, which is enough to resolve, verify, and open the file.
+There is deliberately **no** `sidebar.right.tab.document.actions` seat. When the
+preview renders a file, the header already carries the preview's own controls, and a
+second "open in browser" button next to them earns nothing; the tab-chip menu is one
+right-click away and works for every tab. That menu seat is also what makes the
+plugin useful for a tab whose preview **fails**: the built-in preview only renders
+the document seats once its Host metadata read succeeds, so a tab showing an error
+(for example `HTTP 405` from a third-party previewer) has no `absolutePath`. The tab
+menu still has the tab's resource address, which is enough to resolve, verify, and
+open the file.
 
 ## Why
 
@@ -66,11 +68,11 @@ that Remote so the control still does something useful.
 ## Relationship to DSH's shipped `open-in-app`
 
 DSH already ships `@deepseek-ai/dsh-host-open-in-app` +
-`@deepseek-ai/dsh-client-ui-open-in-app`, which register the same document-preview
-seats with an "Open in app" menu (editors, Git GUIs, terminals). This plugin is not a
-replacement: it is a single-purpose shortcut for "just open it in the browser",
-including files that plugin's own preview cannot render, and it adds the tab-chip
-menu.
+`@deepseek-ai/dsh-client-ui-open-in-app`, which register the document-preview seats
+(`…document.actions` and `…document.unpreviewable`) with an "Open in app" menu
+(editors, Git GUIs, terminals). This plugin is not a replacement: it is a
+single-purpose shortcut for "just open it in the browser", including files that
+plugin's own preview cannot render, and it adds the tab-chip menu.
 
 ## Layout
 
@@ -84,7 +86,7 @@ src/browser.ts    Host-side default-browser resolver: registry UserChoice → Pr
                   watch window
 src/index.ts      Host half: registers the one route, resolves address → workspace
                   path, validates, launches
-src/client.ts     browser half: three slot registrations + route/Remote adapter
+src/client.ts     browser half: two slot registrations + route/Remote adapter
 locale/en.json    meta.title / meta.description
 locale/zh.json    same in Chinese
 cordis.patch.yml  Loader insert row
@@ -122,7 +124,7 @@ point at `dist/`.
    address grammar, the Windows registry/path resolution and launch-plan ordering
    (with injected process facts), the HTTP contract of the Host route (405/415/403/
    400 paths and the Origin fence), and the built client bundle executed in a bare VM
-   (loader id, three registrations, route-first behavior with Remote fallback, and the
+   (loader id, two registrations, route-first behavior with Remote fallback, and the
    refusal paths).
 
 2. **Install into the current profile** (from an absolute package directory):
@@ -137,14 +139,15 @@ point at `dist/`.
 
 3. **Smoke-test in the GUI**
 
-   - Open a session, open the Files tab, click an `.html` file that the preview renders
-     → the preview tab shows an **Open in browser** button in its header; clicking it
-     launches the default browser (not the file association).
+   - Open a session, open the Files tab, click a file the preview renders (an `.html`
+     page, a `.png`) → the preview header carries **no** extra browser button; the
+     file is meant to be read in place.
+   - **Right-click the tab chip** and choose **Open in browser** → the tab's file is
+     handed to the system default browser (not the OS file association), for any file
+     type on the whitelist — an image opens in the browser instead of Photos.
    - Click a tab whose preview fails (for example a third-party previewer showing
-     `HTTP 405`) → **right-click the tab chip** and choose **Open in browser**; the
-     Host resolves the tab's resource address and opens the file.
-   - Open an image (`.png`) → the header button opens it in the browser rather than the
-     OS image viewer.
+     `HTTP 405`) → the same right-click item resolves the tab's resource address and
+     opens the file.
    - In a remote/SSH deployment (`canOpenWorkspacePath()` false and no Host route) the
      document controls stay hidden and the menu item reports that the Host route is
      unavailable.
@@ -183,8 +186,10 @@ point at `dist/`.
   workspace directory), and the shipped Files tree has no context menu of its own.
   Adding one would require shipping a replacement file tree (what
   `dsh-better-sidebar` does).
-- The document-seat buttons only appear once the preview has metadata for the file
-  (`absolutePath`); for a tab whose preview fails, use the tab-chip menu seat.
+- The empty-state button only appears once the preview has metadata for the file
+  (`absolutePath`); a tab whose preview fails is covered by the tab-chip menu seat.
+- The preview header has no button at all by design (see above); if you want one back,
+  re-register `sidebar.right.tab.document.actions` in `src/client.ts`.
 - A profile restart is required after rebuilding, because the client artifact is
   cached by the module loader.
 - The whitelist is deliberately small; extend `DEFAULT_ALLOWED_EXTENSIONS` if you want

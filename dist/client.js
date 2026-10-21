@@ -247,13 +247,16 @@ function parseResourceFileAddress(address) {
  * wrapper's `require`).
  *
  * What it does:
- * - `sidebar.right.tab.document.actions` — an "open in browser" control in the
- *   preview header, for previewable files.
- * - `sidebar.right.tab.document.unpreviewable` — the same control in the empty
- *   state shown when the preview cannot render the file (the HTML-that-fails case).
+ * - `sidebar.right.tab.document.unpreviewable` — an "open in browser" control in
+ *   the empty state shown when the preview cannot render the file (the
+ *   HTML-that-fails case).
  * - `sidebar.right.tab.menu.item` — an item in a tab chip's right-click menu,
  *   which needs no previewed-file metadata at all because the menu receives the
  *   tab's `contentId` (a `dsh-resource://file/…` address).
+ *
+ * There is deliberately no `sidebar.right.tab.document.actions` seat: when the
+ * preview renders the file there is nothing to rescue, the header is already busy,
+ * and the same action sits one right-click away on the tab chip.
  *
  * Opening goes through this package's Host route
  * (`POST /dsh-plugin-open-in-browser/open`), which resolves the user's real
@@ -268,7 +271,6 @@ const PLUGIN_ID = 'dsh-plugin-open-in-browser';
 /** Locale namespace: matches `locale/*.json` and the `locale` registration option. */
 const LOCALE_NAMESPACE = 'open-in-browser';
 /** Slots this plugin contributes to. */
-const DOCUMENT_ACTIONS_SLOT = 'sidebar.right.tab.document.actions';
 const DOCUMENT_UNPREVIEWABLE_SLOT = 'sidebar.right.tab.document.unpreviewable';
 const TAB_MENU_ITEM_SLOT = 'sidebar.right.tab.menu.item';
 /** Host route this plugin's Host half registers. Must match `src/index.ts`. */
@@ -336,12 +338,6 @@ const BUTTON_STYLE = Object.freeze({
     lineHeight: '1',
     cursor: 'pointer',
     whiteSpace: 'nowrap',
-});
-const STATUS_STYLE = Object.freeze({
-    ...BUTTON_STYLE,
-    border: '1px solid transparent',
-    cursor: 'default',
-    opacity: '0.72',
 });
 const EMPTY_STATE_STYLE = Object.freeze({
     display: 'flex',
@@ -602,75 +598,6 @@ function BrowserIcon() {
         focusable: 'false',
     }, React.createElement('rect', { x: 1.75, y: 3, width: 12.5, height: 10.5, rx: 2 }), React.createElement('path', { d: 'M1.75 6h12.5' }), React.createElement('path', { d: 'M5 10.5h3.25' }), React.createElement('path', { d: 'M7 9l2.75-2.75' }), React.createElement('path', { d: 'M8 6.25h1.75V8' }));
 }
-/** Header control for `sidebar.right.tab.document.actions`. */
-function OpenInBrowserButton(props) {
-    const t = readTranslate(props);
-    const absolutePath = readAbsolutePath(props);
-    const open = readOpen(props);
-    const probe = readProbe(props);
-    const [desktop, setDesktop] = React.useState(null);
-    const [status, setStatus] = React.useState('idle');
-    const [failure, setFailure] = React.useState(undefined);
-    React.useEffect(() => {
-        let live = true;
-        if (probe === undefined) {
-            setDesktop(false);
-            return () => {
-                live = false;
-            };
-        }
-        void probe().then((available) => {
-            if (live)
-                setDesktop(available);
-        }, () => {
-            if (live)
-                setDesktop(false);
-        });
-        return () => {
-            live = false;
-        };
-    }, [probe]);
-    if (absolutePath === undefined || open === undefined)
-        return null;
-    if (desktop === false)
-        return null;
-    const onActivate = () => {
-        if (status === 'opening')
-            return;
-        setFailure(undefined);
-        setStatus('opening');
-        void open(absolutePath).then((outcome) => {
-            if (outcome.ok) {
-                setStatus('opened');
-                return;
-            }
-            setStatus('idle');
-            setFailure(t(`error.${outcome.code}`));
-        }, () => {
-            setStatus('idle');
-            setFailure(t('error.remote-refused'));
-        });
-    };
-    if (failure !== undefined) {
-        return React.createElement('button', {
-            type: 'button',
-            style: STATUS_STYLE,
-            title: failure,
-            'aria-label': failure,
-            'data-testid': 'open-in-browser-error',
-            onClick: () => setFailure(undefined),
-        }, BrowserIcon(), React.createElement('span', null, failure));
-    }
-    return React.createElement('button', {
-        type: 'button',
-        style: BUTTON_STYLE,
-        title: t('action.title'),
-        'aria-label': t('action.title'),
-        'data-testid': 'open-in-browser',
-        disabled: status === 'opening',
-        onClick: onActivate,
-    }, BrowserIcon(), React.createElement('span', null, status === 'opened' ? t('action.opened') : t('action.label')));
-}
 /** Empty-state control for `sidebar.right.tab.document.unpreviewable`. */
 function OpenInBrowserEmptyState(props) {
     const t = readTranslate(props);
@@ -761,7 +688,11 @@ function OpenInBrowserTabMenuItem(props) {
     }, BrowserIcon(), React.createElement('span', null, failure ?? t('action.menu')));
 }
 /**
- * Client entry: register all three seats once, and clean them up with the plugin.
+ * Client entry: register the remaining seats once, and clean them up with the plugin.
+ *
+ * The preview-header seat (`sidebar.right.tab.document.actions`) is intentionally
+ * not registered: a file whose preview already renders does not need a second way
+ * out of the tab, and the tab-chip menu covers every tab uniformly.
  */
 function apply(context) {
     const controller = new BrowserTargetController(context);
@@ -787,7 +718,6 @@ function apply(context) {
     const menuInjected = () => ({
         openAddress: (address) => controller.openAddress(address),
     });
-    register(DOCUMENT_ACTIONS_SLOT, OpenInBrowserButton, documentInjected);
     register(DOCUMENT_UNPREVIEWABLE_SLOT, OpenInBrowserEmptyState, documentInjected);
     register(TAB_MENU_ITEM_SLOT, OpenInBrowserTabMenuItem, menuInjected);
 }
