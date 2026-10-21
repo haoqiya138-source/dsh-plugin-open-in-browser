@@ -23,9 +23,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          if [ "$(npm --version | cut -d. -f1)" -lt 11 ]; then
+            npm install -g npm@latest
+          fi
+          npm --version
 
       - name: Install dev dependencies
         run: npm ci
@@ -33,23 +39,12 @@ jobs:
       - name: Typecheck and test (rebuilds dist/)
         run: npm run typecheck && npm test
 
-      # A tag can be pushed before the NPM_TOKEN secret exists (for example while
-      # bootstrapping the repository). In that case the npm publish step is
-      # skipped and the GitHub release is still created, so the workflow stays
-      # green instead of failing on a missing token.
-      - name: Check for an npm token
-        id: npm-token
-        run: echo "present=${{ secrets.NPM_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
-
-      - name: Publish
-        if: ${{ steps.npm-token.outputs.present == 'true' && (github.event_name == 'push' || inputs.dry_run == 'false') }}
+      # Trusted publishing: the runner's OIDC token authenticates the publish,
+      # so no npm token secret is stored in this repository.
+      # https://docs.npmjs.com/trusted-publishers
+      - name: Publish to npm
+        if: ${{ github.event_name == 'push' || inputs.dry_run == 'false' }}
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Skip npm publish (no NPM_TOKEN secret)
-        if: ${{ steps.npm-token.outputs.present != 'true' }}
-        run: echo "::notice::NPM_TOKEN is not configured; skipping npm publish. Add the secret to enable CI releases."
 
       - name: Create GitHub release
         if: ${{ github.event_name == 'push' }}

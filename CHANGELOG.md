@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-22
+
+### Changed
+
+- Release automation now publishes through **npm Trusted Publishing** (GitHub
+  Actions OIDC): the tag workflow authenticates `npm publish --provenance` with the
+  runner's identity token instead of a stored `NPM_TOKEN` secret. No runtime
+  change; the plugin bytes are identical to `0.2.0` apart from the version field.
+
+### Notes
+
+- npm requires one publish after a Trusted Publisher is configured to verify it;
+  this release is that verification.
+
 ## [0.2.0] - 2026-10-21
 
 First public release.
@@ -52,6 +66,7 @@ First public release.
   artifact build, security layer, `sidebar.right.tab.document.actions` and
   `sidebar.right.tab.document.unpreviewable` seats, locale files, and tests.
 
-[Unreleased]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/releases/tag/v0.2.0
 [0.1.0]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/releases/tag/v0.1.0

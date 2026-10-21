@@ -265,35 +265,31 @@ The package is published to npm as
 
 `0.2.0` (2026-10-21) was the first public release.
 
-Release checklist:
+Release checklist (Trusted Publishing is configured, see below):
 
 1. `npm test` (rebuilds `dist/` and runs all 78 cases) and `npm run typecheck`.
-2. `npm version <patch|minor|major>` — bumps `package.json`, commits and creates the tag.
-3. Publish with 2FA: `npm publish --access public` from this machine. The CLI prints
-   an `https://www.npmjs.com/auth/cli/...` URL; open it, approve, and the publish
-   completes. (npm requires an interactive second factor for publishing; an access
-   token alone returns `EOTP`.)
-4. `git push origin main --follow-tags` — the tag runs
-   `.github/workflows/release.yml`, which rebuilds, tests and creates the GitHub
-   release. Until npm **Trusted Publishing** is configured (below), that workflow
-   skips `npm publish` so the release stays green.
+2. `npm version <patch|minor|major>` — bumps `package.json` and `package-lock.json`,
+   commits, and creates the `v<version>` tag.
+3. `git push origin main --follow-tags` — the tag starts
+   `.github/workflows/release.yml`, which runs the typecheck and tests, publishes to
+   npm with provenance through **Trusted Publishing** (OIDC), and creates the GitHub
+   release. No local npm login is needed.
 
-### Continuous publishing (optional)
+The first public release (`0.2.0`) was published by hand with npm's interactive 2FA
+flow: `npm publish --access public` prints an
+`https://www.npmjs.com/auth/cli/...` URL that must be approved in a browser. That
+path still works as a fallback, but an access token alone returns `EOTP` for
+accounts in the `auth-and-writes` 2FA mode, so CI does not use tokens.
 
-npm's supported token-free path is
-[Trusted Publishing](https://docs.npmjs.com/trusted-publishers):
+### Trusted publishing (configured)
 
-1. On npmjs.com open the package → **Settings → Trusted publishing**.
-2. Add a **GitHub Actions** publisher: repository
-   `haoqiya138-source/dsh-plugin-open-in-browser`, workflow `release.yml`,
-   environment left empty.
-3. In `.github/workflows/release.yml`, drop the `NPM_TOKEN` guard and the
-   `NODE_AUTH_TOKEN` env from the publish step — the runner's OIDC token
-   (`id-token: write`, already set) authenticates `npm publish --provenance`.
-
-Access tokens with "bypass 2FA" do not help: for accounts in the `auth-and-writes`
-mode npm still answers `EOTP` for direct publishing, which is why the workflow keeps
-the token guard as a safe default.
+On npmjs.com the package has a **Trusted publisher**: GitHub Actions, repository
+`haoqiya138-source/dsh-plugin-open-in-browser`, workflow `release.yml`, environment
+empty, permissions `npm publish` / `npm stage publish` / `npm dist-tag`.
+`release.yml` authenticates with the runner's OIDC token (`id-token: write`) and
+keeps `--provenance`; no `NPM_TOKEN` secret is stored in the repository. The
+`v0.2.1` release is the verification publish npm requires after a publisher is
+configured.
 
 CI (`.github/workflows/ci.yml`) runs the typecheck and all 78 test cases on Linux
 and Windows for Node 20 and 22. The release workflow rebuilds `dist/` before

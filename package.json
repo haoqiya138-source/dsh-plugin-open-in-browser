@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-open-in-browser",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Open a sidebar file in the system default browser from a DSH tab's right-click menu or the unpreviewable-file empty state.",
   "type": "module",
   "license": "MIT",
