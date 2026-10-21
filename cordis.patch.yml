@@ -1,0 +1,3 @@
+- insert:
+    - id: open-in-browser
+      name: 'dsh-plugin-open-in-browser'
