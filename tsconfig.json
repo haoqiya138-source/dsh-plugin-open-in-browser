@@ -17,5 +17,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/index.ts", "src/security.ts"]
+  "include": ["src/index.ts", "src/security.ts", "src/browser.ts"]
 }

@@ -11,6 +11,7 @@ import {
   isAllowedExtension,
   isContainedIn,
   normalizeForCompare,
+  parseResourceFileAddress,
   splitSegments,
   validateLocalFileTarget,
   validateResolvedTarget,
@@ -176,4 +177,51 @@ test('validateResolvedTarget never resolves a path that already failed validatio
   })
   assert.deepEqual(result, { ok: false, code: 'traversal' })
   assert.equal(called, false)
+})
+
+test('parses a session file address', () => {
+  assert.deepEqual(parseResourceFileAddress('dsh-resource://file/session/sess-1/pages/preview.html'), {
+    scope: 'session',
+    sessionId: 'sess-1',
+    path: 'pages/preview.html',
+  })
+})
+
+test('parses an absolute file address with a Windows drive', () => {
+  assert.deepEqual(parseResourceFileAddress('dsh-resource://file/absolute/C%3A/Users/me/a.png'), {
+    scope: 'absolute',
+    path: 'C:/Users/me/a.png',
+  })
+})
+
+test('parses an absolute POSIX file address', () => {
+  assert.deepEqual(parseResourceFileAddress('dsh-resource://file/absolute/home/me/a.html'), {
+    scope: 'absolute',
+    path: '/home/me/a.html',
+  })
+})
+
+test('decodes escaped segments and drops query and fragment', () => {
+  assert.deepEqual(parseResourceFileAddress('dsh-resource://file/session/s%201/a%20b.html?x=1#y'), {
+    scope: 'session',
+    sessionId: 's 1',
+    path: 'a b.html',
+  })
+})
+
+test('rejects addresses that are not DSH file addresses', () => {
+  for (const address of [
+    '',
+    'https://example.com/a.html',
+    'dsh-resource://file/',
+    'dsh-resource://file/unknown/scope/a.html',
+    'dsh-resource://file/session/only-session-id',
+    'dsh-resource://file/absolute/',
+  ]) {
+    assert.equal(parseResourceFileAddress(address), undefined, address)
+  }
+})
+
+test('rejects malformed percent escapes instead of throwing', () => {
+  assert.equal(parseResourceFileAddress('dsh-resource://file/session/s1/%ZZ.html'), undefined)
 })

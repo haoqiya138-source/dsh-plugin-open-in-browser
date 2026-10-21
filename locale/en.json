@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Open in Browser",
-    "description": "Adds an Open in browser button to the document preview header so a sidebar file opens in the system default browser, including files the preview cannot render."
+    "description": "Adds an Open in browser button to the document preview header, the unpreviewable-file empty state, and a Sidebar tab's right-click menu, so a file opens in the system default browser instead of the in-app preview."
   }
 }

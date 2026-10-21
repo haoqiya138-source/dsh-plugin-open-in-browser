@@ -1,9 +1,9 @@
 {
   "name": "dsh-plugin-open-in-browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Open a sidebar file in the system default browser from the DSH document preview header.",
+  "description": "Open a sidebar file in the system default browser from the DSH document preview header, a tab's right-click menu, or the unpreviewable-file empty state.",
   "exports": {
     ".": "./dist/index.js",
     "./client": "./dist/client.js",
@@ -12,6 +12,7 @@
   },
   "files": [
     "dist/index.js",
+    "dist/browser.js",
     "dist/client.js",
     "cordis.patch.yml",
     "locale/*.json",
@@ -37,7 +38,7 @@
     "build:host": "node scripts/build-host.mjs",
     "build:client": "node scripts/build-client.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit",
-    "test": "npm run build && node --test tests/security.test.mjs tests/client-bundle.test.mjs",
+    "test": "npm run build && node --test tests/security.test.mjs tests/browser.test.mjs tests/host-route.test.mjs tests/client-bundle.test.mjs",
     "check:client": "node --check dist/client.js"
   },
   "devDependencies": {

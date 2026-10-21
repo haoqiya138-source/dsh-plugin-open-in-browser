@@ -88,3 +88,32 @@ export declare function validateLocalFileTarget(request: ValidationRequest): Val
  * workspace therefore fails as `symlink-escape` rather than `outside-root`.
  */
 export declare function validateResolvedTarget(request: RealPathRequest): Promise<ValidationResult>;
+/**
+ * The `dsh-resource://file/…` address grammar, which is how a Sidebar tab names
+ * the document it shows (`dsh-resource://file/session/<sessionId>/<path>`).
+ *
+ * A tab's `contentId` is the only file identity a tab-menu contribution receives,
+ * so this parser is how the browser half turns "the tab the user right-clicked"
+ * into something the Host can resolve. It is deliberately the same grammar the
+ * shipped document preview uses (`parseFileAddress` in
+ * `dsh-client-ui-sidebar-documentpreview`), re-implemented here because that
+ * parser is package-private.
+ */
+export interface ResourceFileAddress {
+    /** `session` names a path inside one Session's workspace; `absolute` names one directly. */
+    readonly scope: 'session' | 'absolute';
+    /** Session whose Host workspace resolves `path`; absent for `absolute` addresses. */
+    readonly sessionId?: string;
+    /** Absolute POSIX path, Windows drive path, or workspace-relative path. */
+    readonly path: string;
+}
+/**
+ * Parse one `dsh-resource://file/…` address.
+ *
+ * Query and fragment suffixes are ignored, every segment is URL-decoded, and an
+ * address that is not this scheme, has an unknown scope, or carries an invalid
+ * escape sequence reads as `undefined` instead of throwing. Note that this parser
+ * never resolves `.` or `..`: validating the decoded path is the caller's job
+ * (see {@link validateLocalFileTarget}).
+ */
+export declare function parseResourceFileAddress(address: string): ResourceFileAddress | undefined;

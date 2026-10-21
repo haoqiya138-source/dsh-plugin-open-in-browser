@@ -6,19 +6,25 @@
  * imports except `react` (provided by the browser module table through the
  * wrapper's `require`).
  *
- * What it does: adds an "open in browser" control to two document-preview seats,
- * both of which receive the previewed file's Host (absolute) path as a prop —
- * `sidebar.right.tab.document.actions` (header toolbar) and
- * `sidebar.right.tab.document.unpreviewable` (the empty state shown instead of a
- * body when the preview cannot render the file).
+ * What it does:
+ * - `sidebar.right.tab.document.actions` — an "open in browser" control in the
+ *   preview header, for previewable files.
+ * - `sidebar.right.tab.document.unpreviewable` — the same control in the empty
+ *   state shown when the preview cannot render the file (the HTML-that-fails case).
+ * - `sidebar.right.tab.menu.item` — an item in a tab chip's right-click menu,
+ *   which needs no previewed-file metadata at all because the menu receives the
+ *   tab's `contentId` (a `dsh-resource://file/…` address).
  *
- * Opening itself is NOT done here: the browser half calls the Host Remote
- * `session.openWorkspacePath({ path })`, which re-verifies the Host path mapping
- * and then launches the OS-default association (for `.html` that is the default
- * browser). The plugin never touches Electron and needs no main-process bridge.
+ * Opening goes through this package's Host route
+ * (`POST /dsh-plugin-open-in-browser/open`), which resolves the user's real
+ * default browser and launches it — so an image opens in the browser, not in the
+ * OS image viewer. When the route is absent (an older Host half, or a deployment
+ * without the route) the control degrades to the Host Remote
+ * `session.openWorkspacePath({ path })`, which follows the OS association and is
+ * still the shipped DSH behavior. The plugin never touches Electron.
  */
 
-import { validateLocalFileTarget } from './security.js'
+import { parseResourceFileAddress, validateLocalFileTarget } from './security.js'
 
 /** Package id: must equal the package name and the loader factory id. */
 export const PLUGIN_ID = 'dsh-plugin-open-in-browser'
@@ -29,6 +35,10 @@ export const LOCALE_NAMESPACE = 'open-in-browser'
 /** Slots this plugin contributes to. */
 export const DOCUMENT_ACTIONS_SLOT = 'sidebar.right.tab.document.actions'
 export const DOCUMENT_UNPREVIEWABLE_SLOT = 'sidebar.right.tab.document.unpreviewable'
+export const TAB_MENU_ITEM_SLOT = 'sidebar.right.tab.menu.item'
+
+/** Host route this plugin's Host half registers. Must match `src/index.ts`. */
+export const OPEN_ROUTE_PATH = '/dsh-plugin-open-in-browser/open'
 
 /** Services the browser half needs. Declared at module level so Cordis resolves them. */
 export const inject = ['slots', 'locale', 'remote', 'remote.session'] as const
@@ -77,6 +87,8 @@ type Translate = (key: string, named?: Record<string, unknown>) => string
 type OpenFailureCode =
   | 'unavailable'
   | 'remote-refused'
+  | 'route-refused'
+  | 'bad-address'
   | 'empty'
   | 'control-chars'
   | 'too-long'
@@ -90,16 +102,19 @@ type OpenFailureCode =
   | 'symlink-escape'
 
 /** Result of one click. */
-type OpenOutcome = { readonly ok: true } | { readonly ok: false; readonly code: OpenFailureCode }
+type OpenOutcome = { readonly ok: true; readonly mode: 'browser' | 'association' } | { readonly ok: false; readonly code: OpenFailureCode }
 
 /** English fallback so the control never renders a raw locale key. */
 const FALLBACK_EN: Readonly<Record<string, string>> = Object.freeze({
   'action.label': 'Open in browser',
   'action.title': 'Open in the system default browser',
   'action.opened': 'Opened',
+  'action.menu': 'Open in browser',
   'empty.hint': 'This file cannot be previewed here. Open it in the system browser instead.',
   'error.unavailable': 'This deployment has no native desktop available.',
   'error.remote-refused': 'The Host refused to open this path.',
+  'error.route-refused': 'The Host could not launch a browser for this file.',
+  'error.bad-address': 'This tab does not point at a local file.',
   'error.empty': 'No file was selected.',
   'error.control-chars': 'The path contains control characters.',
   'error.too-long': 'The path is too long.',
@@ -118,9 +133,12 @@ const FALLBACK_ZH: Readonly<Record<string, string>> = Object.freeze({
   'action.label': '在浏览器打开',
   'action.title': '用系统默认浏览器打开',
   'action.opened': '已打开',
+  'action.menu': '在浏览器打开',
   'empty.hint': '这里无法预览该文件，可以改用系统浏览器打开。',
   'error.unavailable': '当前部署没有可用的本机桌面。',
   'error.remote-refused': 'Host 拒绝打开该路径。',
+  'error.route-refused': 'Host 没能为这个文件启动浏览器。',
+  'error.bad-address': '这个标签页没有指向本地文件。',
   'error.empty': '没有选中文件。',
   'error.control-chars': '路径包含控制字符。',
   'error.too-long': '路径过长。',
@@ -169,7 +187,33 @@ const EMPTY_STATE_STYLE: Readonly<Record<string, string | number>> = Object.free
 })
 
 /**
- * Probe the Host once per page and call the Remote for the actual launch.
+ * One row of the tab-chip menu.
+ *
+ * The owner supplies the popup chrome; this only has to look like the sibling
+ * rows it sits between, so it inherits the menu's font and color and keeps its
+ * own hover affordance minimal.
+ */
+const MENU_ITEM_STYLE: Readonly<Record<string, string | number>> = Object.freeze({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  width: '100%',
+  padding: '6px 10px',
+  border: 'none',
+  borderRadius: '4px',
+  background: 'transparent',
+  color: 'inherit',
+  font: 'inherit',
+  fontSize: '12px',
+  lineHeight: '1.4',
+  textAlign: 'left',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+})
+
+/**
+ * Probe the Host once per page, then open through the Host route with the
+ * shipped Remote as the degraded path.
  *
  * The Remote is read through `ctx.get` inside a try/catch because Cordis throws
  * when a service outside `inject` is read, and a render must never crash the UI.
@@ -182,7 +226,7 @@ class BrowserTargetController {
     this.remote = readSessionRemote(context)
   }
 
-  /** Resolve once whether this deployment can hand a path to a native desktop. */
+  /** Whether the toolbar control should render at all. */
   probe(): Promise<boolean> {
     if (this.desktop === undefined) {
       this.desktop = (async () => {
@@ -199,10 +243,14 @@ class BrowserTargetController {
     return this.desktop
   }
 
-  /** Validate, then ask the Host to open the path with its default application. */
+  /** Open one absolute file path: Host route first, OS association after. */
   async open(rawPath: string): Promise<OpenOutcome> {
     const checked = validateLocalFileTarget({ path: rawPath })
     if (!checked.ok) return { ok: false, code: checked.code }
+
+    if ((await this.postRoute({ path: checked.path })) !== undefined) {
+      return { ok: true, mode: 'browser' }
+    }
 
     const remote = this.remote
     if (remote === undefined) return { ok: false, code: 'unavailable' }
@@ -211,11 +259,67 @@ class BrowserTargetController {
     try {
       const reply = await remote.openWorkspacePath({ path: checked.path })
       if (reply.ok !== true) return { ok: false, code: 'remote-refused' }
-      return { ok: true }
+      return { ok: true, mode: 'association' }
     } catch {
       return { ok: false, code: 'remote-refused' }
     }
   }
+
+  /**
+   * Open the file a tab shows, named by its `dsh-resource://file/…` address.
+   *
+   * Used by the tab-chip menu, which never receives the previewed file's Host
+   * path — only the tab's `contentId`. The Host resolves the address against the
+   * Session's workspace root and validates the result.
+   */
+  async openAddress(rawAddress: string): Promise<OpenOutcome> {
+    if (parseResourceFileAddress(rawAddress) === undefined) return { ok: false, code: 'bad-address' }
+    if ((await this.postRoute({ address: rawAddress })) !== undefined) {
+      return { ok: true, mode: 'browser' }
+    }
+    return { ok: false, code: 'route-refused' }
+  }
+
+  /** POST one body to this package's Host route; `undefined` when unavailable. */
+  private async postRoute(body: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
+    const fetchImpl = typeof globalThis.fetch === 'function' ? globalThis.fetch : undefined
+    if (fetchImpl === undefined) return undefined
+    try {
+      const reply = await fetchImpl(routeUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (reply.ok !== true) return undefined
+      const parsed: unknown = await reply.json()
+      if (typeof parsed !== 'object' || parsed === null) return undefined
+      const record = parsed as Record<string, unknown>
+      return record['ok'] === true ? record : undefined
+    } catch {
+      return undefined
+    }
+  }
+}
+
+/**
+ * The route URL, resolved against the page origin.
+ *
+ * DSH serves its UI from the privileged `dsh-app://app` scheme (or plain HTTP in
+ * a browser tab), so a relative fetch would be resolved by the page but a custom
+ * scheme needs an absolute same-origin URL. Custom schemes without a usable
+ * origin fall back to the path, which the Host's own page still resolves.
+ */
+function routeUrl(): string {
+  try {
+    const location = globalThis.location
+    const origin = typeof location === 'object' && location !== null ? location.origin : undefined
+    if (typeof origin === 'string' && origin !== '' && origin !== 'null') {
+      return new URL(OPEN_ROUTE_PATH, origin).href
+    }
+  } catch {
+    // Fall through to the bare path.
+  }
+  return OPEN_ROUTE_PATH
 }
 
 /** Read `remote.session` without throwing when the deployment has no Remote. */
@@ -293,6 +397,26 @@ function readOpen(props: SlotProps): ((path: string) => Promise<OpenOutcome>) | 
 function readProbe(props: SlotProps): (() => Promise<boolean>) | undefined {
   const candidate = props['probeDesktop']
   return typeof candidate === 'function' ? (candidate as () => Promise<boolean>) : undefined
+}
+
+/** Read the injected `openAddress` function. */
+function readOpenAddress(props: SlotProps): ((address: string) => Promise<OpenOutcome>) | undefined {
+  const candidate = props['openAddress']
+  return typeof candidate === 'function' ? (candidate as (address: string) => Promise<OpenOutcome>) : undefined
+}
+
+/**
+ * The `dsh-resource://file/…` address a tab shows, when it names a local file.
+ *
+ * Tab-menu contributions are handed the tab record, whose `contentId` is the only
+ * file identity available there (no absolute path). Anything the resource parser
+ * does not recognize is not a file tab, so no menu item is offered.
+ */
+function readTabContentId(tab: unknown): string | undefined {
+  if (typeof tab !== 'object' || tab === null) return undefined
+  const contentId = (tab as { contentId?: unknown }).contentId
+  if (typeof contentId !== 'string') return undefined
+  return parseResourceFileAddress(contentId) === undefined ? undefined : contentId
 }
 
 /** The glyph: a window with an outward arrow, inheriting `currentColor`. */
@@ -468,22 +592,75 @@ export function OpenInBrowserEmptyState(props: SlotProps): unknown {
 }
 
 /**
- * Client entry: register both seats once, and clean them up with the plugin.
+ * Tab-chip menu control (`sidebar.right.tab.menu.item`).
+ *
+ * This is the seat the user reaches by right-clicking a Sidebar tab. It needs no
+ * preview success: the tab's own `contentId` is enough, so it also covers the
+ * `HTTP 405` HTML tab whose preview never produced a body or a Host path.
+ */
+export function OpenInBrowserTabMenuItem(props: SlotProps): unknown {
+  const t = readTranslate(props)
+  const openAddress = readOpenAddress(props)
+  const contentId = readTabContentId(props['tab'])
+  const dismiss = props['dismiss']
+  const [busy, setBusy] = React.useState(false)
+  const [failure, setFailure] = React.useState<string | undefined>(undefined)
+
+  if (contentId === undefined || openAddress === undefined) return null
+
+  const onActivate = (): void => {
+    if (busy) return
+    setBusy(true)
+    setFailure(undefined)
+    void openAddress(contentId).then(
+      (outcome) => {
+        setBusy(false)
+        if (outcome.ok) {
+          if (typeof dismiss === 'function') (dismiss as () => void)()
+          return
+        }
+        setFailure(t(`error.${outcome.code}`))
+      },
+      () => {
+        setBusy(false)
+        setFailure(t('error.route-refused'))
+      },
+    )
+  }
+
+  return React.createElement(
+    'button',
+    {
+      type: 'button',
+      role: 'menuitem',
+      style: MENU_ITEM_STYLE,
+      title: t('action.title'),
+      'data-testid': 'open-in-browser-menu',
+      disabled: busy,
+      onClick: onActivate,
+    },
+    BrowserIcon(),
+    React.createElement('span', null, failure ?? t('action.menu')),
+  )
+}
+
+/**
+ * Client entry: register all three seats once, and clean them up with the plugin.
  */
 export function apply(context: ClientContextLike): void {
   const controller = new BrowserTargetController(context)
-  const injected = (): Record<string, unknown> => ({
-    openInBrowser: (path: string) => controller.open(path),
-    probeDesktop: () => controller.probe(),
-  })
 
-  const register = (slot: string, component: unknown): void => {
+  const register = (
+    slot: string,
+    component: unknown,
+    inject: () => Record<string, unknown>,
+  ): void => {
     const options: Record<string, unknown> = {
       name: slot,
       id: PLUGIN_ID,
       order: 20,
       locale: LOCALE_NAMESPACE,
-      inject: injected,
+      inject,
     }
     const mount = (): unknown => context.slots.inject(slot, () => context.slots.register(options, component))
     if (typeof context.effect === 'function') {
@@ -493,6 +670,15 @@ export function apply(context: ClientContextLike): void {
     mount()
   }
 
-  register(DOCUMENT_ACTIONS_SLOT, OpenInBrowserButton)
-  register(DOCUMENT_UNPREVIEWABLE_SLOT, OpenInBrowserEmptyState)
+  const documentInjected = (): Record<string, unknown> => ({
+    openInBrowser: (path: string) => controller.open(path),
+    probeDesktop: () => controller.probe(),
+  })
+  const menuInjected = (): Record<string, unknown> => ({
+    openAddress: (address: string) => controller.openAddress(address),
+  })
+
+  register(DOCUMENT_ACTIONS_SLOT, OpenInBrowserButton, documentInjected)
+  register(DOCUMENT_UNPREVIEWABLE_SLOT, OpenInBrowserEmptyState, documentInjected)
+  register(TAB_MENU_ITEM_SLOT, OpenInBrowserTabMenuItem, menuInjected)
 }

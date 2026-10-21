@@ -238,3 +238,60 @@ export async function validateResolvedTarget(request: RealPathRequest): Promise<
 
   return { ok: true, path: resolved, extension: afterResolve.extension }
 }
+
+/**
+ * The `dsh-resource://file/…` address grammar, which is how a Sidebar tab names
+ * the document it shows (`dsh-resource://file/session/<sessionId>/<path>`).
+ *
+ * A tab's `contentId` is the only file identity a tab-menu contribution receives,
+ * so this parser is how the browser half turns "the tab the user right-clicked"
+ * into something the Host can resolve. It is deliberately the same grammar the
+ * shipped document preview uses (`parseFileAddress` in
+ * `dsh-client-ui-sidebar-documentpreview`), re-implemented here because that
+ * parser is package-private.
+ */
+export interface ResourceFileAddress {
+  /** `session` names a path inside one Session's workspace; `absolute` names one directly. */
+  readonly scope: 'session' | 'absolute'
+  /** Session whose Host workspace resolves `path`; absent for `absolute` addresses. */
+  readonly sessionId?: string
+  /** Absolute POSIX path, Windows drive path, or workspace-relative path. */
+  readonly path: string
+}
+
+/** Scheme plus type every file address opens with. */
+const FILE_ADDRESS_PREFIX = 'dsh-resource://file/'
+
+/**
+ * Parse one `dsh-resource://file/…` address.
+ *
+ * Query and fragment suffixes are ignored, every segment is URL-decoded, and an
+ * address that is not this scheme, has an unknown scope, or carries an invalid
+ * escape sequence reads as `undefined` instead of throwing. Note that this parser
+ * never resolves `.` or `..`: validating the decoded path is the caller's job
+ * (see {@link validateLocalFileTarget}).
+ */
+export function parseResourceFileAddress(address: string): ResourceFileAddress | undefined {
+  try {
+    if (typeof address !== 'string' || !address.startsWith(FILE_ADDRESS_PREFIX)) return undefined
+    const end = address.search(/[?#]/)
+    const parts = address.slice(FILE_ADDRESS_PREFIX.length, end === -1 ? undefined : end).split('/')
+    const scope = parts[0]
+    const rest = parts.slice(1)
+    if (scope === 'session') {
+      const id = rest[0]
+      const segments = rest.slice(1)
+      if (id === undefined || id === '' || segments.length === 0) return undefined
+      return { scope: 'session', sessionId: decodeURIComponent(id), path: segments.map(decodeURIComponent).join('/') }
+    }
+    if (scope === 'absolute') {
+      const unc = rest[0] === '' && rest.length > 1
+      const segments = (unc ? rest.slice(1) : rest).map(decodeURIComponent)
+      if (segments.length === 0 || segments[0] === '') return undefined
+      return { scope: 'absolute', path: unc ? `//${segments.join('/')}` : segments[0] !== undefined && /^[A-Za-z]:$/.test(segments[0]) ? segments.join('/') : `/${segments.join('/')}` }
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
+}

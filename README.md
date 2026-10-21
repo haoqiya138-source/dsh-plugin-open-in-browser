@@ -1,8 +1,22 @@
 # dsh-plugin-open-in-browser
 
-A community DSH plugin that adds an **Open in browser** control to the document
-preview, so a file picked in the sidebar opens in the **system default browser**
-instead of the in-app preview.
+A community DSH plugin that adds an **Open in browser** control to the Sidebar
+document preview, so a file picked in the Files tree opens in the **system default
+browser** instead of the in-app preview.
+
+Three entry points ship in one plugin:
+
+| Seat | Where it shows | What it needs from the Host |
+| --- | --- | --- |
+| `sidebar.right.tab.document.actions` | Header toolbar of a previewable document tab | the previewed file's Host path (`absolutePath`) |
+| `sidebar.right.tab.document.unpreviewable` | "Cannot preview this file" empty state | the same Host path |
+| `sidebar.right.tab.menu.item` | Right-click menu of a Sidebar **tab chip** | only the tab's `contentId` (`dsh-resource://file/session/…`) |
+
+The third seat is what makes the plugin useful for a tab whose preview fails: the
+built-in preview only renders the two document seats once its Host metadata read
+succeeds, so a tab showing an error (for example `HTTP 405` from a third-party
+previewer) has no `absolutePath` and no header button. The tab menu still has the
+tab's resource address, which is enough to resolve, verify, and open the file.
 
 ## Why
 
@@ -12,55 +26,72 @@ show up blank — and files the preview cannot render at all show an empty state
 fastest escape hatch is the OS: hand the file to the default browser, which resolves
 relative assets and origin-dependent APIs normally.
 
-## What it is (and is not)
-
-- **Is:** two slot contributions on the document preview header/empty state, both of
-  which receive the previewed file's Host (absolute) path as `absolutePath`:
-  - `sidebar.right.tab.document.actions` — header toolbar button.
-  - `sidebar.right.tab.document.unpreviewable` — button inside the "cannot preview"
-    empty state.
-- **Is not:** a file-tree right-click menu. The catalog exposes no file-node
-  context-menu slot (only `sidebar.right.tab.files.actions`, a toolbar that receives
-  the displayed workspace directory), and the shipped Files tree has no context menu
-  of its own. Adding one would require shipping a replacement file tree.
-- **Is not:** an Electron integration. A client plugin has no main-process access and
-  no `contextBridge` preload of its own; the supported bridge from the browser half to
-  Node is the Host Remote.
-
 ## How opening works
 
-The browser half calls the Host Remote that DSH already uses for "open with the
-default application":
+The browser half posts to one exact Host route registered by this plugin's Host half:
 
-```js
-await ctx.get('remote').session.openWorkspacePath({ path })   // → { ok: true }
+```http
+POST /dsh-plugin-open-in-browser/open
+content-type: application/json
+
+{ "path": "C:\\Users\\me\\project\\preview.html" }
+{ "address": "dsh-resource://file/session/<sessionId>/pages/preview.html" }
 ```
 
-`session.openWorkspacePath` re-verifies the Host path mapping and then launches the
-native association. On Windows the host runs `explorer.exe <file-uri>`, which resolves
-`.html` to the default browser; on macOS `open`; on Linux `xdg-open`. The same Remote
-also exposes `canOpenWorkspacePath()` (used here to hide the control when the
-deployment has no desktop) and `workspacePathApplications({ path })` (which apps are
-registered for the file).
+`address` is the form a tab menu can produce: the Host resolves the Session's
+workspace root (`sessions.get(sessionId).header.cwd`), joins the relative path,
+then verifies the result (below). The reply is
+`{ ok: true, mode: "browser" | "association", path }`; failures are
+`{ ok: false, code }` with a 4xx/5xx status.
 
-> Note: the request schema is `{ path, action?: 'reveal', application?: string }`.
+The Host half then resolves the user's **actual default browser** instead of relying
+on the OS file association:
+
+1. `HKCU\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https|http\UserChoice`
+   → `ProgId` → `HKCR\<ProgId>\shell\open\command` → executable;
+2. well-known install paths (Chrome, Edge, Brave, Firefox, Vivaldi, Opera);
+3. fallback: the OS association (`explorer.exe <file-uri>` on Windows, `open` on
+   macOS, `xdg-open` on Linux).
+
+This matters for images, PDFs, and other previewable files: the shipped
+`session.openWorkspacePath` Remote follows the OS association (a `.png` opens the
+Photos app on Windows), while this plugin promises a browser. If the Host route is
+unavailable (older Host half, deployment without it), the browser half degrades to
+that Remote so the control still does something useful.
+
+> The Remote request schema is `{ path, action?: 'reveal', application?: string }`.
 > There is no `intent` field — omitting `action`/`application` *is* "open with the
 > default application".
+
+## Relationship to DSH's shipped `open-in-app`
+
+DSH already ships `@deepseek-ai/dsh-host-open-in-app` +
+`@deepseek-ai/dsh-client-ui-open-in-app`, which register the same document-preview
+seats with an "Open in app" menu (editors, Git GUIs, terminals). This plugin is not a
+replacement: it is a single-purpose shortcut for "just open it in the browser",
+including files that plugin's own preview cannot render, and it adds the tab-chip
+menu.
 
 ## Layout
 
 ```
 src/security.ts   path-safety layer: absolute-path check, traversal/UNC/device
-                  rejection, extension whitelist, workspace containment, and
-                  symlink-escape detection via an injected realpath
-src/client.ts     browser half: slot registrations + the Remote adapter
-src/index.ts      host half: Loader row + reusable Host-side validators
-locale/en.json    meta.title / meta.description + UI strings
+                  rejection, extension whitelist, workspace containment, symlink
+                  escape detection via an injected realpath, and the
+                  dsh-resource://file/… address parser
+src/browser.ts    Host-side default-browser resolver: registry UserChoice → ProgId →
+                  command, well-known install paths, detached launch with a
+                  watch window
+src/index.ts      Host half: registers the one route, resolves address → workspace
+                  path, validates, launches
+src/client.ts     browser half: three slot registrations + route/Remote adapter
+locale/en.json    meta.title / meta.description
 locale/zh.json    same in Chinese
 cordis.patch.yml  Loader insert row
 scripts/*.mjs     tsc-driven builds (no bundler); the client build wraps the
                   compiled module in the DSH module-loader factory
-tests/*.test.mjs  node:test suites for the safety layer and the built bundle
+tests/*.test.mjs  node:test suites: safety layer, browser resolver, Host route
+                  contract, and the built client bundle
 ```
 
 ## Build
@@ -69,12 +100,12 @@ Requires Node ≥ 20 (verified on Node 24) and no runtime dependency.
 
 ```bash
 npm install       # typescript + @types/node only
-npm run build     # dist/index.js (host) + dist/client.js (browser artifact)
+npm run build     # dist/index.js + dist/browser.js (host) + dist/client.js (browser)
 npm run typecheck # host and client configs
-npm test          # builds, then runs both node:test suites
+npm test          # builds, then runs all four node:test suites
 ```
 
-`npm run build` is the only step DSH needs: the package's `files` list and `exports`
+`npm run build` is the only step DSH needs: the package's `files` and `exports`
 point at `dist/`.
 
 ## Local test steps
@@ -86,11 +117,13 @@ point at `dist/`.
    npm test
    ```
 
-   Expected: `dist/index.js` and `dist/client.js` exist; all `node:test` cases pass.
-   The client suite executes `dist/client.js` in a bare VM (only `window` +
-   `require('react')`), asserts the loader id equals the package name, asserts both
-   seats are registered, and drives `openInBrowser()` against a stub Remote — so the
-   Remote call shape and every refusal path are covered without a GUI.
+   Expected: `dist/index.js`, `dist/browser.js`, and `dist/client.js` exist; all
+   `node:test` cases pass (currently 78). The suites cover the pure safety layer and
+   address grammar, the Windows registry/path resolution and launch-plan ordering
+   (with injected process facts), the HTTP contract of the Host route (405/415/403/
+   400 paths and the Origin fence), and the built client bundle executed in a bare VM
+   (loader id, three registrations, route-first behavior with Remote fallback, and the
+   refusal paths).
 
 2. **Install into the current profile** (from an absolute package directory):
 
@@ -99,21 +132,25 @@ point at `dist/`.
    ```
 
    A profile that already had this package installed must be restarted before the new
-   artifact is loaded.
+   artifact is loaded. When the profile links the workspace directory (as the local
+   development setup does), rebuilding is enough; only the restart is required.
 
 3. **Smoke-test in the GUI**
 
-   - Open a session, open the Files tab, click an `.html` file → the preview tab
-     appears with an **Open in browser** button in its header; clicking it launches
-     the default browser.
-   - Click a file the preview cannot render (e.g. an `.svg` that is not previewable,
-     or any file type that hits the empty state) → the empty state shows the same
-     action.
-   - In a remote/SSH deployment (`canOpenWorkspacePath()` false) both controls stay
-     hidden.
-   - Refusals surface as a short inline message, never as a crash: a path with `..`,
-     a non-whitelisted extension, or a path the Host cannot map is reported in the
-     button itself.
+   - Open a session, open the Files tab, click an `.html` file that the preview renders
+     → the preview tab shows an **Open in browser** button in its header; clicking it
+     launches the default browser (not the file association).
+   - Click a tab whose preview fails (for example a third-party previewer showing
+     `HTTP 405`) → **right-click the tab chip** and choose **Open in browser**; the
+     Host resolves the tab's resource address and opens the file.
+   - Open an image (`.png`) → the header button opens it in the browser rather than the
+     OS image viewer.
+   - In a remote/SSH deployment (`canOpenWorkspacePath()` false and no Host route) the
+     document controls stay hidden and the menu item reports that the Host route is
+     unavailable.
+   - Refusals surface as short inline text, never as a crash: a path with `..`, a
+     non-whitelisted extension, a foreign `Origin`, or a path the Host cannot map is
+     reported.
 
 4. **Uninstall**
 
@@ -123,20 +160,32 @@ point at `dist/`.
 
 ## Security notes
 
-- The browser half validates the path before the Remote call: it must be absolute, it
-  must not contain `.`/`..`, UNC or device-namespace paths, control characters, or
-  reserved device names, and its extension must be on the browser-safe whitelist.
-- Containment against the workspace root is enforced only when the caller supplies a
-  root; on the document seats the root is not in the slot's props, so the Remote's
-  Host-mapping verification is the authoritative fence (it rejects
-  `Path has no verified Host path`).
-- `validateResolvedTarget()` implements symlink-escape detection with an injected
-  `realpath`, for callers that do know the root (Host code, tests).
+- The route is fenced on three layers: the Host web server's own authentication, a
+  same-origin `Origin` check (`dsh-app://app` or the serving `Host`; absent `Origin`
+  is a local client such as curl), and a bounded JSON body (`16 KiB`,
+  `content-type: application/json` required). It can only ever open a **file** path
+  that passes validation, never accept a command.
+- The browser half validates before calling: the path must be absolute, must not
+  contain `.`/`..`, UNC or device-namespace paths, control characters, or reserved
+  device names, and its extension must be on the browser-safe whitelist.
+- Address-based requests are resolved against the Session's live `header.cwd`, then
+  passed through the same gate **and** an injected `realpath`; a symlink that leaves
+  the workspace is rejected (`symlink-escape`), as is an unknown Session
+  (`session-unavailable`) rather than guessing a root.
+- Containment against a workspace root is only possible where a root is known; on the
+  document seats the slot only supplies the absolute path, so the Host mapping check
+  of the Remote (and of the preview itself) remains the authoritative fence there.
 
 ## Limitations
 
-- No file-tree context menu (see above).
+- No file-tree right-click menu. The slot catalog exposes no file-node context-menu
+  slot (only `sidebar.right.tab.files.actions`, a toolbar that receives the displayed
+  workspace directory), and the shipped Files tree has no context menu of its own.
+  Adding one would require shipping a replacement file tree (what
+  `dsh-better-sidebar` does).
+- The document-seat buttons only appear once the preview has metadata for the file
+  (`absolutePath`); for a tab whose preview fails, use the tab-chip menu seat.
 - A profile restart is required after rebuilding, because the client artifact is
   cached by the module loader.
 - The whitelist is deliberately small; extend `DEFAULT_ALLOWED_EXTENSIONS` if you want
-  more types (e.g. `.mp4`) opened externally.
+  more types opened externally.
