@@ -1,5 +1,10 @@
 # dsh-plugin-open-in-browser
 
+[![npm version](https://img.shields.io/npm/v/dsh-plugin-open-in-browser.svg)](https://www.npmjs.com/package/dsh-plugin-open-in-browser)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-plugin-open-in-browser.svg)](https://www.npmjs.com/package/dsh-plugin-open-in-browser)
+[![CI](https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/actions/workflows/ci.yml/badge.svg)](https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/blob/main/LICENSE)
+
 A community DSH plugin that opens a Sidebar file in the **system default browser**
 instead of the in-app preview.
 
@@ -25,7 +30,8 @@ open the file.
 The package ships prebuilt artifacts (`dist/`), so installing needs no build step
 and no runtime dependency.
 
-**From npm** (after the first publish):
+**From npm** — published as
+[`dsh-plugin-open-in-browser`](https://www.npmjs.com/package/dsh-plugin-open-in-browser):
 
 1. Open DSH → **插件 → 添加插件**.
 2. Enter the package name `dsh-plugin-open-in-browser`.
@@ -254,23 +260,40 @@ than a public issue.
 ## Releasing
 
 Repository: <https://github.com/haoqiya138-source/dsh-plugin-open-in-browser>.
-The package is published to npm as `dsh-plugin-open-in-browser`.
+The package is published to npm as
+[`dsh-plugin-open-in-browser`](https://www.npmjs.com/package/dsh-plugin-open-in-browser).
+
+`0.2.0` (2026-10-21) was the first public release.
 
 Release checklist:
 
 1. `npm test` (rebuilds `dist/` and runs all 78 cases) and `npm run typecheck`.
 2. `npm version <patch|minor|major>` — bumps `package.json`, commits and creates the tag.
-3. `git push origin main --follow-tags` — the tag triggers
-   `.github/workflows/release.yml`, which rebuilds, tests, publishes with
-   [npm provenance](https://docs.npmjs.com/generating-provenance-statements) and
-   creates the GitHub release.
+3. Publish with 2FA: `npm publish --access public` from this machine. The CLI prints
+   an `https://www.npmjs.com/auth/cli/...` URL; open it, approve, and the publish
+   completes. (npm requires an interactive second factor for publishing; an access
+   token alone returns `EOTP`.)
+4. `git push origin main --follow-tags` — the tag runs
+   `.github/workflows/release.yml`, which rebuilds, tests and creates the GitHub
+   release. Until npm **Trusted Publishing** is configured (below), that workflow
+   skips `npm publish` so the release stays green.
 
-CI publishing needs a one-time setup: create an npm **automation** token
-(<https://www.npmjs.com/settings/~/tokens>) and add it as the repository secret
-`NPM_TOKEN` (Settings → Secrets and variables → Actions). Until that secret
-exists, the release workflow skips `npm publish`, still creates the GitHub
-release, and the package can be published manually with `npm login` +
-`npm publish --access public`.
+### Continuous publishing (optional)
+
+npm's supported token-free path is
+[Trusted Publishing](https://docs.npmjs.com/trusted-publishers):
+
+1. On npmjs.com open the package → **Settings → Trusted publishing**.
+2. Add a **GitHub Actions** publisher: repository
+   `haoqiya138-source/dsh-plugin-open-in-browser`, workflow `release.yml`,
+   environment left empty.
+3. In `.github/workflows/release.yml`, drop the `NPM_TOKEN` guard and the
+   `NODE_AUTH_TOKEN` env from the publish step — the runner's OIDC token
+   (`id-token: write`, already set) authenticates `npm publish --provenance`.
+
+Access tokens with "bypass 2FA" do not help: for accounts in the `auth-and-writes`
+mode npm still answers `EOTP` for direct publishing, which is why the workflow keeps
+the token guard as a safe default.
 
 CI (`.github/workflows/ci.yml`) runs the typecheck and all 78 test cases on Linux
 and Windows for Node 20 and 22. The release workflow rebuilds `dist/` before
