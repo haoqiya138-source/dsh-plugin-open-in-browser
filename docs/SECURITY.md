@@ -9,7 +9,7 @@ narrow, fenced at several layers, and documented here for reviewers.
 Please do **not** open a public issue for a security problem.
 
 - Use GitHub's **Report a vulnerability** form (Security tab → Advisories) on the
-  repository: `https://github.com/your-github-name/dsh-plugin-open-in-browser/security/advisories/new`
+  repository: `https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/security/advisories/new`
 - Or email the maintainer listed in `package.json` (`author`).
 
 Include the DSH version, the plugin version, the operating system, and a minimal

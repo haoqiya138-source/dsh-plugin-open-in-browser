@@ -52,6 +52,6 @@ First public release.
   artifact build, security layer, `sidebar.right.tab.document.actions` and
   `sidebar.right.tab.document.unpreviewable` seats, locale files, and tests.
 
-[Unreleased]: https://github.com/your-github-name/dsh-plugin-open-in-browser/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/your-github-name/dsh-plugin-open-in-browser/releases/tag/v0.2.0
-[0.1.0]: https://github.com/your-github-name/dsh-plugin-open-in-browser/releases/tag/v0.1.0
+[Unreleased]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/releases/tag/v0.2.0
+[0.1.0]: https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/releases/tag/v0.1.0

@@ -4,14 +4,14 @@
   "description": "Open a sidebar file in the system default browser from a DSH tab's right-click menu or the unpreviewable-file empty state.",
   "type": "module",
   "license": "MIT",
-  "author": "dsh-plugin-open-in-browser contributors",
-  "homepage": "https://github.com/your-github-name/dsh-plugin-open-in-browser#readme",
+  "author": "haoqiya138-source <haoqiya138@gmail.com>",
+  "homepage": "https://github.com/haoqiya138-source/dsh-plugin-open-in-browser#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-github-name/dsh-plugin-open-in-browser.git"
+    "url": "git+https://github.com/haoqiya138-source/dsh-plugin-open-in-browser.git"
   },
   "bugs": {
-    "url": "https://github.com/your-github-name/dsh-plugin-open-in-browser/issues"
+    "url": "https://github.com/haoqiya138-source/dsh-plugin-open-in-browser/issues"
   },
   "keywords": [
     "dsh",

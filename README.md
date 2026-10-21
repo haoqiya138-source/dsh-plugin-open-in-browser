@@ -253,19 +253,28 @@ than a public issue.
 
 ## Releasing
 
-The package is publish-ready apart from repository-specific placeholders:
+Repository: <https://github.com/haoqiya138-source/dsh-plugin-open-in-browser>.
+The package is published to npm as `dsh-plugin-open-in-browser`.
 
-1. Replace `your-github-name` in `package.json` (`repository`, `homepage`, `bugs`),
-   `CHANGELOG.md` links, and `docs/SECURITY.md`.
-2. Replace `author` in `package.json` and the copyright line in `LICENSE` with your
-   name and year.
-3. `npm login`, then `npm publish --access public` (or push a `v*` tag: the release
-   workflow publishes with provenance and creates the GitHub release).
-4. Tag: `git tag v0.2.0 && git push origin v0.2.0`.
+Release checklist:
 
-CI (`.github/workflows/ci.yml`) runs the typecheck and all 78 test cases on Linux and
-Windows for Node 20 and 22. The release workflow rebuilds `dist/` before publishing,
-so the tarball always matches the tagged source.
+1. `npm test` (rebuilds `dist/` and runs all 78 cases) and `npm run typecheck`.
+2. `npm version <patch|minor|major>` — bumps `package.json`, commits and creates the tag.
+3. `git push origin main --follow-tags` — the tag triggers
+   `.github/workflows/release.yml`, which rebuilds, tests, publishes with
+   [npm provenance](https://docs.npmjs.com/generating-provenance-statements) and
+   creates the GitHub release.
+
+CI publishing needs a one-time setup: create an npm **automation** token
+(<https://www.npmjs.com/settings/~/tokens>) and add it as the repository secret
+`NPM_TOKEN` (Settings → Secrets and variables → Actions). Until that secret
+exists, the release workflow skips `npm publish`, still creates the GitHub
+release, and the package can be published manually with `npm login` +
+`npm publish --access public`.
+
+CI (`.github/workflows/ci.yml`) runs the typecheck and all 78 test cases on Linux
+and Windows for Node 20 and 22. The release workflow rebuilds `dist/` before
+publishing, so the tarball always matches the tagged source.
 
 ## License
 
