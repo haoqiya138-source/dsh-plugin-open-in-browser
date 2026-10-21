@@ -7,6 +7,7 @@
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { pathToFileURL } from 'node:url'
 
 import {
   buildLaunchPlans,
@@ -161,7 +162,11 @@ test('buildLaunchPlans opens a browser first, then the OS association', () => {
   assert.equal(plans.length, 2)
   assert.equal(plans[0]?.mode, 'browser')
   assert.equal(plans[0]?.command, CHROME)
-  assert.match(plans[0]?.args[0] ?? '', /^file:\/\/\/C:\/Users\/me\/project\/preview\.html$/)
+  // The browser receives a file URL for the target, built by the same
+  // `pathToFileURL` the implementation uses (so this is platform-independent:
+  // a Windows path encoded on a Linux runner still equals the computed URL).
+  assert.equal(plans[0]?.args[0], pathToFileURL(path).href)
+  assert.match(plans[0]?.args[0] ?? '', /^file:\/\/\//)
   assert.equal(plans[1]?.mode, 'association')
   assert.equal(plans[1]?.command, 'explorer.exe')
   assert.deepEqual(plans[1]?.acceptExitCodes, [0, 1])
