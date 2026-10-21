@@ -240,3 +240,48 @@ test('probes the Host once per page', async () => {
   assert.equal(probes, 1)
 })
 
+/** Collect every string rendered inside a fake React element tree. */
+function textOf(node) {
+  if (node === null || node === undefined) return ''
+  if (typeof node === 'string') return node
+  if (Array.isArray(node)) return node.map(textOf).join(' ')
+  if (typeof node === 'object') return textOf(node.children)
+  return ''
+}
+
+test('header control renders bundled text when the locale service has no entry', () => {
+  const module = loadModule()
+  const client = module.factory(() => fakeReact)
+  const { ctx, registrations } = harness()
+  client.apply(ctx)
+
+  const Button = registrations[0].component
+  const tree = Button({
+    absolutePath: INSIDE,
+    openInBrowser: async () => ({ ok: true }),
+    probeDesktop: async () => true,
+    // A locale service with no strings for this namespace returns the key itself.
+    t: (key) => key,
+  })
+
+  const rendered = textOf(tree)
+  assert.match(rendered, /Open in browser/)
+  assert.doesNotMatch(rendered, /action\.label/)
+})
+
+test('header control renders nothing without a Host path', () => {
+  const module = loadModule()
+  const client = module.factory(() => fakeReact)
+  const { ctx, registrations } = harness()
+  client.apply(ctx)
+
+  const Button = registrations[0].component
+  const tree = Button({
+    openInBrowser: async () => ({ ok: true }),
+    probeDesktop: async () => true,
+    t: (key) => key,
+  })
+
+  assert.equal(tree, null)
+})
+

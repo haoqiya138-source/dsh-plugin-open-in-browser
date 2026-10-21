@@ -93,7 +93,7 @@ type OpenFailureCode =
 type OpenOutcome = { readonly ok: true } | { readonly ok: false; readonly code: OpenFailureCode }
 
 /** English fallback so the control never renders a raw locale key. */
-const FALLBACK: Readonly<Record<string, string>> = Object.freeze({
+const FALLBACK_EN: Readonly<Record<string, string>> = Object.freeze({
   'action.label': 'Open in browser',
   'action.title': 'Open in the system default browser',
   'action.opened': 'Opened',
@@ -111,6 +111,27 @@ const FALLBACK: Readonly<Record<string, string>> = Object.freeze({
   'error.outside-root': 'The file is outside the workspace.',
   'error.realpath-failed': 'The file could not be resolved.',
   'error.symlink-escape': 'The file resolves outside the workspace.',
+})
+
+/** Chinese fallback, used when the browser UI itself is Chinese. */
+const FALLBACK_ZH: Readonly<Record<string, string>> = Object.freeze({
+  'action.label': '在浏览器打开',
+  'action.title': '用系统默认浏览器打开',
+  'action.opened': '已打开',
+  'empty.hint': '这里无法预览该文件，可以改用系统浏览器打开。',
+  'error.unavailable': '当前部署没有可用的本机桌面。',
+  'error.remote-refused': 'Host 拒绝打开该路径。',
+  'error.empty': '没有选中文件。',
+  'error.control-chars': '路径包含控制字符。',
+  'error.too-long': '路径过长。',
+  'error.not-absolute': '路径不是绝对路径。',
+  'error.unc-path': '不打开网络共享路径。',
+  'error.device-path': '不打开设备路径。',
+  'error.traversal': '路径包含向上跳转的片段。',
+  'error.extension': '该文件类型不在浏览器打开白名单内。',
+  'error.outside-root': '该文件不在工作区内。',
+  'error.realpath-failed': '无法解析该文件。',
+  'error.symlink-escape': '该文件解析后位于工作区之外。',
 })
 
 const BUTTON_STYLE: Readonly<Record<string, string | number>> = Object.freeze({
@@ -213,19 +234,53 @@ function readSessionRemote(context: ClientContextLike): SessionRemoteLike | unde
   }
 }
 
+/** Whether the browser UI is Chinese, so bundled fallbacks match it. */
+function prefersChinese(): boolean {
+  try {
+    const language = globalThis.navigator?.language
+    return typeof language === 'string' && language.toLowerCase().startsWith('zh')
+  } catch {
+    return false
+  }
+}
+
+/** Bundled text for a locale key, so an unresolved key never reaches the UI. */
+function fallbackText(key: string): string {
+  const table = prefersChinese() ? FALLBACK_ZH : FALLBACK_EN
+  return table[key] ?? FALLBACK_EN[key] ?? key
+}
+
 /** Read the previewed file's Host path from the slot owner's props. */
 function readAbsolutePath(props: SlotProps): string | undefined {
   const value = props['absolutePath']
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-/** Resolve the slot's translation function, falling back to the bundled English text. */
+/**
+ * Resolve the slot's translation function.
+ *
+ * The locale service only serves namespaces it was given, and this package ships
+ * no UI string catalog, so an unresolved key comes back unchanged. Treat that as
+ * "no translation" and use the bundled text instead of showing `action.label`.
+ */
 function readTranslate(props: SlotProps): Translate {
   const candidate = props['t']
-  if (typeof candidate === 'function') {
-    return candidate as Translate
+  if (typeof candidate !== 'function') {
+    return (key: string) => fallbackText(key)
   }
-  return (key: string) => FALLBACK[key] ?? key
+  const translate = candidate as Translate
+  return (key: string, named?: Record<string, unknown>): string => {
+    let translated: unknown
+    try {
+      translated = translate(key, named)
+    } catch {
+      translated = undefined
+    }
+    if (typeof translated === 'string' && translated.length > 0 && translated !== key) {
+      return translated
+    }
+    return fallbackText(key)
+  }
 }
 
 /** Read the injected `openInBrowser` function. */
