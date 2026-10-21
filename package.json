@@ -13,6 +13,7 @@
   "files": [
     "dist/index.js",
     "dist/browser.js",
+    "dist/security.js",
     "dist/client.js",
     "cordis.patch.yml",
     "locale/*.json",
