@@ -20,6 +20,37 @@ the document seats once its Host metadata read succeeds, so a tab showing an err
 menu still has the tab's resource address, which is enough to resolve, verify, and
 open the file.
 
+## Install
+
+The package ships prebuilt artifacts (`dist/`), so installing needs no build step
+and no runtime dependency.
+
+**From npm** (after the first publish):
+
+1. Open DSH → **插件 → 添加插件**.
+2. Enter the package name `dsh-plugin-open-in-browser`.
+3. Fully quit and reopen DSH so the new Host half and client artifact load.
+
+The same target works from the plugin tooling:
+
+```
+plugin_manager  action=install_bundle  target=dsh-plugin-open-in-browser
+```
+
+**From a local checkout or a GitHub clone** (the clone already contains `dist/`):
+
+```
+plugin_manager  action=install_bundle  target=<absolute path to the checkout>
+```
+
+**Requirements**: the DSH desktop app (the Host must be able to launch a native
+application); Node ≥ 20 only when building from source. A remote/SSH deployment has
+no desktop browser to launch, so the control reports that instead of failing
+silently.
+
+After any install, update, or rebuild, fully quit and reopen DSH: the client bundle
+is cached by the module loader.
+
 ## Why
 
 The built-in preview renders HTML inside a sandboxed `iframe` (`srcDoc`/blob). Pages
@@ -95,6 +126,22 @@ scripts/*.mjs     tsc-driven builds (no bundler); the client build wraps the
 tests/*.test.mjs  node:test suites: safety layer, browser resolver, Host route
                   contract, and the built client bundle
 ```
+
+### Why no `src/main/`, `src/preload/`, `src/renderer/`?
+
+Those are the layers of an **Electron application**. A DSH plugin is a Cordis
+bundle, not an Electron app: it never reaches the Electron main process and DSH
+exposes no preload/`contextBridge` bridge to plugins. The equivalent split is:
+
+| Electron app layer | This plugin |
+| --- | --- |
+| main process (Node) | `src/index.ts` + `src/browser.ts` — the Host half, running inside DSH's Host process |
+| preload / contextBridge | the Host route `POST /dsh-plugin-open-in-browser/open` (with DSH's `session.openWorkspacePath` Remote as the fallback) |
+| renderer injection | `src/client.ts` — the browser artifact loaded through `window.__ModuleLoader__` |
+
+`security.ts` is shared by both halves on purpose: the browser half validates
+before calling, and the Host validates again before launching. Splitting it into
+a "main" copy would let the two gates drift apart.
 
 ## Build
 
@@ -194,3 +241,33 @@ point at `dist/`.
   cached by the module loader.
 - The whitelist is deliberately small; extend `DEFAULT_ALLOWED_EXTENSIONS` if you want
   more types opened externally.
+
+## Security
+
+The plugin adds a process-launch capability, so it ships with a written threat
+model: the single Host route, the fences around it, the path gate, and what is
+explicitly out of scope. See [docs/SECURITY.md](docs/SECURITY.md).
+
+To report a vulnerability, use GitHub's private advisory form (Security tab) rather
+than a public issue.
+
+## Releasing
+
+The package is publish-ready apart from repository-specific placeholders:
+
+1. Replace `your-github-name` in `package.json` (`repository`, `homepage`, `bugs`),
+   `CHANGELOG.md` links, and `docs/SECURITY.md`.
+2. Replace `author` in `package.json` and the copyright line in `LICENSE` with your
+   name and year.
+3. `npm login`, then `npm publish --access public` (or push a `v*` tag: the release
+   workflow publishes with provenance and creates the GitHub release).
+4. Tag: `git tag v0.2.0 && git push origin v0.2.0`.
+
+CI (`.github/workflows/ci.yml`) runs the typecheck and all 78 test cases on Linux and
+Windows for Node 20 and 22. The release workflow rebuilds `dist/` before publishing,
+so the tarball always matches the tagged source.
+
+## License
+
+[MIT](LICENSE)
+

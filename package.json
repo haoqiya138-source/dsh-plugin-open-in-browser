@@ -1,9 +1,30 @@
 {
   "name": "dsh-plugin-open-in-browser",
   "version": "0.2.0",
-  "private": true,
+  "description": "Open a sidebar file in the system default browser from a DSH tab's right-click menu or the unpreviewable-file empty state.",
   "type": "module",
-  "description": "Open a sidebar file in the system default browser from the DSH document preview header, a tab's right-click menu, or the unpreviewable-file empty state.",
+  "license": "MIT",
+  "author": "dsh-plugin-open-in-browser contributors",
+  "homepage": "https://github.com/your-github-name/dsh-plugin-open-in-browser#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-github-name/dsh-plugin-open-in-browser.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-github-name/dsh-plugin-open-in-browser/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "browser",
+    "open-in-browser",
+    "sidebar"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./dist/index.js",
     "./client": "./dist/client.js",
@@ -17,7 +38,9 @@
     "dist/client.js",
     "cordis.patch.yml",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "CHANGELOG.md",
+    "docs/*.md"
   ],
   "dsh": {
     "bundle": {
@@ -40,7 +63,8 @@
     "build:client": "node scripts/build-client.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit",
     "test": "npm run build && node --test tests/security.test.mjs tests/browser.test.mjs tests/host-route.test.mjs tests/client-bundle.test.mjs",
-    "check:client": "node --check dist/client.js"
+    "check:client": "node --check dist/client.js",
+    "prepublishOnly": "npm test"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
